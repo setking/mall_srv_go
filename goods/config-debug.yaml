@@ -1,0 +1,7 @@
+host: "192.168.0.109"
+port: 8848
+namespace: "c565307b-4a10-42d1-aa2b-50f68a8aecf3"
+user: "nacos"
+password: "nacos"
+dataid: "goods"
+group: "srv"

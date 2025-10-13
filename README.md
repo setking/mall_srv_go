@@ -1,0 +1,1 @@
+#### go实现的微服务商城服务端，具体描述请看[python版本描述](https://github.com/setking/mall_srv),在完全实现了python版本的功能基础上加入了Elasticsearch
