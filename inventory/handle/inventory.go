@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"inventory/global"
+	"inventory/model"
+	"inventory/proto"
+	"sort"
+
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/go-redsync/redsync/v4"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gorm.io/gorm"
-	"inventory/global"
-	"inventory/model"
-	"inventory/proto"
 )
 
 type InventoryServer struct {
@@ -44,14 +47,35 @@ func (*InventoryServer) GetInv(ctx context.Context, req *proto.GoodsInvInfo) (*p
 
 // 扣减库存
 func (*InventoryServer) SellInv(ctx context.Context, req *proto.SellInvInfo) (*emptypb.Empty, error) {
-	var mutexId int32
-	for _, goodsId := range req.GoodsInfo {
-		mutexId += goodsId.GoodsId + 1
+	// 对每个商品单独加锁，排序是为了防止死锁
+	goodsIds := make([]int32, 0, len(req.GoodsInfo))
+	for _, goods := range req.GoodsInfo {
+		goodsIds = append(goodsIds, goods.GoodsId)
 	}
-	mutex := global.Rs.NewMutex(fmt.Sprintf("goods_%d", mutexId))
-	if err := mutex.Lock(); err != nil {
-		return nil, status.Errorf(codes.Internal, "获取redis分布式锁异常！")
+	sort.Slice(goodsIds, func(i, j int) bool {
+		return goodsIds[i] < goodsIds[j]
+	})
+	// 按排序后的顺序逐个加锁
+	mutexes := make([]*redsync.Mutex, 0, len(goodsIds))
+	for _, id := range goodsIds {
+		lockKey := fmt.Sprintf("goods_lock_%d", id) // 每个商品独立的锁
+		mutex := global.Rs.NewMutex(lockKey)
+		if err := mutex.Lock(); err != nil {
+			// 加锁失败，释放已加的锁
+			for _, m := range mutexes {
+				m.Unlock()
+			}
+			return nil, status.Errorf(codes.Internal, "获取分布式锁失败")
+		}
+		mutexes = append(mutexes, mutex)
 	}
+	defer func() {
+		for _, mutex := range mutexes {
+			if ok, err := mutex.Unlock(); !ok || err != nil {
+				zap.S().Errorw("释放redis分布式锁异常", "err", err)
+			}
+		}
+	}()
 	tx := global.DB.Begin()
 	sellDetail := model.InventoryHistory{
 		OrderSn: req.OrderSn,
@@ -64,11 +88,7 @@ func (*InventoryServer) SellInv(ctx context.Context, req *proto.SellInvInfo) (*e
 			Num:   goods.Num,
 		})
 		var inv model.Inventory
-		mutexT := global.Rs.NewMutex(fmt.Sprintf("goods_%d", goods.GoodsId))
-		if err := mutexT.Lock(); err != nil {
-			return nil, status.Errorf(codes.Internal, "获取redis分布式锁异常！")
-		}
-		if result := global.DB.Where(&model.Inventory{Goods: goods.GoodsId}).First(&inv); result.RowsAffected == 0 {
+		if result := tx.Where(&model.Inventory{Goods: goods.GoodsId}).First(&inv); result.RowsAffected == 0 {
 			tx.Rollback()
 			return nil, status.Errorf(codes.InvalidArgument, "库存没有这条信息")
 		}
@@ -78,9 +98,6 @@ func (*InventoryServer) SellInv(ctx context.Context, req *proto.SellInvInfo) (*e
 		}
 		inv.Stocks -= goods.Num
 		tx.Save(&inv)
-		if ok, err := mutexT.Unlock(); !ok || err != nil {
-			return nil, status.Errorf(codes.Internal, "释放redis分布式锁异常！")
-		}
 	}
 	//写入InventoryHistory表
 	sellDetail.OrderInvDetail = details
@@ -88,9 +105,9 @@ func (*InventoryServer) SellInv(ctx context.Context, req *proto.SellInvInfo) (*e
 		tx.Rollback()
 		return nil, status.Errorf(codes.Internal, "保存库存扣减历史失败！")
 	}
-	tx.Commit()
-	if ok, err := mutex.Unlock(); !ok || err != nil {
-		return nil, status.Errorf(codes.Internal, "释放redis分布式锁异常！")
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		return nil, status.Errorf(codes.Internal, "事务提交失败")
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -132,35 +149,46 @@ func (*InventoryServer) SellInv(ctx context.Context, req *proto.SellInvInfo) (*e
 //
 // 库存归还
 func (*InventoryServer) Reback(ctx context.Context, req *proto.SellInvInfo) (*emptypb.Empty, error) {
-	var mutexId int32
-	for _, goodsId := range req.GoodsInfo {
-		mutexId += goodsId.GoodsId
+	// 对每个商品单独加锁，排序是为了防止死锁
+	goodsIds := make([]int32, 0, len(req.GoodsInfo))
+	for _, goods := range req.GoodsInfo {
+		goodsIds = append(goodsIds, goods.GoodsId)
 	}
-	mutex := global.Rs.NewMutex(fmt.Sprintf("goods_%d", mutexId))
-	if err := mutex.Lock(); err != nil {
-		return nil, status.Errorf(codes.Internal, "获取redis分布式锁异常！")
+	sort.Slice(goodsIds, func(i, j int) bool {
+		return goodsIds[i] < goodsIds[j]
+	})
+	// 按排序后的顺序逐个加锁
+	mutexes := make([]*redsync.Mutex, 0, len(goodsIds))
+	for _, id := range goodsIds {
+		lockKey := fmt.Sprintf("goods_lock_%d", id) // 每个商品独立的锁
+		mutex := global.Rs.NewMutex(lockKey)
+		if err := mutex.Lock(); err != nil {
+			// 加锁失败，释放已加的锁
+			for _, m := range mutexes {
+				m.Unlock()
+			}
+			return nil, status.Errorf(codes.Internal, "获取分布式锁失败")
+		}
+		mutexes = append(mutexes, mutex)
 	}
+	defer func() {
+		for _, mutex := range mutexes {
+			if ok, err := mutex.Unlock(); !ok || err != nil {
+				zap.S().Errorw("释放redis分布式锁异常", "err", err)
+			}
+		}
+	}()
 	tx := global.DB.Begin()
 	for _, goods := range req.GoodsInfo {
 		var inv model.Inventory
-		mutexT := global.Rs.NewMutex(fmt.Sprintf("goods_%d", goods.GoodsId))
-		if err := mutexT.Lock(); err != nil {
-			return nil, status.Errorf(codes.Internal, "获取redis分布式锁异常！")
-		}
 		if result := global.DB.Where(&model.Inventory{Goods: goods.GoodsId}).First(&inv); result.RowsAffected == 0 {
 			tx.Rollback()
 			return nil, status.Errorf(codes.InvalidArgument, "库存没有这条信息")
 		}
 		inv.Stocks += goods.Num
 		tx.Save(&inv)
-		if ok, err := mutexT.Unlock(); !ok || err != nil {
-			return nil, status.Errorf(codes.Internal, "释放redis分布式锁异常！")
-		}
 	}
 	tx.Commit()
-	if ok, err := mutex.Unlock(); !ok || err != nil {
-		return nil, status.Errorf(codes.Internal, "释放redis分布式锁异常！")
-	}
 	return &emptypb.Empty{}, nil
 }
 func AutoReback(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {

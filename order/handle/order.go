@@ -4,6 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"order/global"
+	"order/model"
+	"order/proto"
+	"order/utils"
+	"time"
+
 	"github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/consumer"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
@@ -12,11 +18,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"order/global"
-	"order/model"
-	"order/proto"
-	"order/utils"
-	"time"
 )
 
 type OrderServer struct {
@@ -52,13 +53,14 @@ func (u *OrderServer) CreateCartItem(ctx context.Context, req *proto.CartItemReq
 	fmt.Println("req", req)
 	if res.RowsAffected == 1 {
 		shoppingCart.Nums += req.Nums
+		global.DB.Save(&shoppingCart)
 	} else {
 		shoppingCart.User = req.UserId
 		shoppingCart.Goods = req.GoodsId
 		shoppingCart.Checked = false
 		shoppingCart.Nums = req.Nums
+		global.DB.Create(&shoppingCart)
 	}
-	global.DB.Save(&shoppingCart)
 	return &proto.ShopCartItemInfoResponse{
 		Id: shoppingCart.ID,
 	}, nil
@@ -95,6 +97,7 @@ type OrderListener struct {
 	Ctx         context.Context
 }
 
+// 执行本地事务
 func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitive.LocalTransactionState {
 	var orderInfo model.Orderinfo
 	_ = json.Unmarshal(msg.Body, &orderInfo)
@@ -165,7 +168,8 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		o.Code = codes.Internal
 		o.Detail = "批量插入订单失败"
 		return primitive.CommitMessageState
-	} //删除购物车记录
+	}
+	//删除购物车记录
 	if res := tx.Where(&model.Shoppingcart{User: orderInfo.User, Checked: true}).Delete(&model.Shoppingcart{}); res.RowsAffected == 0 {
 		tx.Rollback()
 		o.Code = codes.Internal
@@ -178,11 +182,13 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 		producer.WithNameServer([]string{mqHost}),
 	)
 	if err != nil {
-		panic("初始化producer失败")
+		zap.S().Errorf("初始化producer失败: %s\n", err.Error())
+		return primitive.RollbackMessageState
 	}
 	err = p.Start()
 	if err != nil {
-		panic("启动producer失败")
+		zap.S().Errorf("启动producer失败: %s\n", err.Error())
+		return primitive.RollbackMessageState
 	}
 	msg = primitive.NewMessage("order_timeout", msg.Body)
 	msg.WithDelayTimeLevel(3)
@@ -194,13 +200,15 @@ func (o *OrderListener) ExecuteLocalTransaction(msg *primitive.Message) primitiv
 	}
 	err = p.Shutdown()
 	if err != nil {
-		fmt.Printf("关闭producer失败: %s", err.Error())
-		return primitive.CommitMessageState
+		zap.S().Errorf("关闭producer失败: %s\n", err.Error())
+		return primitive.RollbackMessageState
 	}
 	tx.Commit()
 	o.Code = codes.OK
 	return primitive.RollbackMessageState
 }
+
+// 检查本地事务
 func (o *OrderListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
 	var orderInfo model.Orderinfo
 	_ = json.Unmarshal(msg.Body, &orderInfo)
@@ -217,7 +225,8 @@ func (u *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 	mqHost := fmt.Sprintf("%s:%d", global.ServerConfig.MqInfo.Host, global.ServerConfig.MqInfo.Port)
 	p, err := rocketmq.NewTransactionProducer(
 		&orderListener,
-		producer.WithGroupName(global.ServerConfig.MqInfo.InvGroupName),
+		//producer.WithGroupName(global.ServerConfig.MqInfo.InvGroupName),
+		producer.WithGroupName(fmt.Sprintf("%s_%d", global.ServerConfig.MqInfo.InvGroupName, time.Now().UnixNano())),
 		producer.WithNameServer([]string{mqHost}),
 	)
 
@@ -227,8 +236,8 @@ func (u *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 	}
 	errs := p.Start()
 	if errs != nil {
-		zap.S().Errorf("启动producer失败: %s\n", err.Error())
-		return nil, err
+		zap.S().Errorf("启动producer失败: %s\n", errs.Error())
+		return nil, errs
 	}
 	order := model.Orderinfo{
 		OrderSn:     utils.GenerateOrderSn(req.UserId),
@@ -254,7 +263,8 @@ func (u *OrderServer) CreateOrder(ctx context.Context, req *proto.OrderRequest) 
 	}
 	err = p.Shutdown()
 	if err != nil {
-		panic("关闭producer失败: " + err.Error())
+		zap.S().Errorf("关闭producer失败: %s", err.Error())
+		//panic("关闭producer失败: " + err.Error())
 	}
 	return &proto.OrderInfoResponse{Id: orderListener.ID, OrderSn: order.OrderSn, Total: orderListener.OrderAmount}, nil
 }
@@ -356,11 +366,13 @@ func OrderTimeout(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.
 				producer.WithNameServer([]string{mqHost}),
 			)
 			if errs != nil {
-				panic("初始化producer失败")
+				zap.S().Errorf("启动producer失败: %s\n", errs.Error())
+				return consumer.ConsumeRetryLater, nil
 			}
 			errs = p.Start()
 			if errs != nil {
-				panic("启动producer失败")
+				zap.S().Errorf("启动producer失败: %s\n", errs.Error())
+				return consumer.ConsumeRetryLater, nil
 			}
 			var err error
 			_, err = p.SendSync(context.Background(), primitive.NewMessage("order_reback", msgs[i].Body))
@@ -374,7 +386,7 @@ func OrderTimeout(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.
 				panic("关闭producer失败: " + err.Error())
 			}
 			tx.Commit()
-			return consumer.ConsumeSuccess, nil
+			return consumer.ConsumeRetryLater, nil
 		}
 	}
 	return consumer.ConsumeSuccess, nil

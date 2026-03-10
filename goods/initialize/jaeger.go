@@ -2,6 +2,7 @@ package initialize
 
 import (
 	"fmt"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	host        = "192.168.0.109"
+	host        = "192.168.194.136"
 	port        = 14268
 	Service     = "goods_srv_http"
 	environment = "production"

@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 	"user/global"
 	"user/initialize"
 	"user/model"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 func main() {
@@ -20,7 +21,7 @@ func main() {
 	}
 }
 func InitSql() {
-	dsn := "root:k1310234627@tcp(192.168.0.109:3306)/mall_user?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := "root:k1310234627@tcp(192.168.194.136:3306)/user?charset=utf8mb4&parseTime=True&loc=Local"
 	//sqlInfo := global.ServerConfig.MysqlInfo
 	//dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local", sqlInfo.User, sqlInfo.Password, sqlInfo.Host, sqlInfo.Port, sqlInfo.Db)
 	var err error

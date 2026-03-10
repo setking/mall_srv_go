@@ -3,8 +3,9 @@ package main
 import (
 	"crypto/sha512"
 	"fmt"
-	"github.com/anaskhan96/go-password-encoder"
 	"strings"
+
+	"github.com/anaskhan96/go-password-encoder"
 )
 
 // Md5加密方法
@@ -17,7 +18,7 @@ import (
 //		}
 //		return hex.EncodeToString(MD5.Sum(nil))
 //	}
-func main() {
+func GenMd5() {
 	// Using the default options
 	//salt, encodedPwd := password.Encode("generic password", nil)
 	//check := password.Verify("generic password", salt, encodedPwd, nil)

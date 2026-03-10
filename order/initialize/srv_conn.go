@@ -2,13 +2,14 @@ package initialize
 
 import (
 	"fmt"
+	"log"
+	"order/global"
+	"order/proto"
+
 	_ "github.com/mbobakov/grpc-consul-resolver" //这个必须加上，要不然会有报错
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log"
-	"order/global"
-	"order/proto"
 )
 
 func InitSrvConn() {
@@ -24,7 +25,7 @@ func InitSrvConn() {
 		log.Fatal(errs)
 		zap.S().Fatalf("[InitSrvConn] 连接 【库存服务失败】")
 	}
-	//拨号连接用户grpc服务
+	//拨号连接库存grpc服务
 	inventorySrvClient := proto.NewInventoryClient(inventoryConn)
 	global.InventoryClient = inventorySrvClient
 	//连接商品服务

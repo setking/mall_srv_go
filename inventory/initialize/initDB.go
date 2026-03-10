@@ -2,18 +2,19 @@ package initialize
 
 import (
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"gorm.io/gorm/schema"
 	"inventory/global"
 	"log"
 	"os"
 	"time"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 func InitDB() {
-	//dsn := "root:k1310234627@tcp(192.168.0.109:3306)/sk_inventory?charset=utf8mb4&parseTime=True&loc=Local"
+	//dsn := "root:k1310234627@tcp(192.168.194.133:3306)/inventory?charset=utf8mb4&parseTime=True&loc=Local"
 	sqlInfo := global.ServerConfig.MysqlInfo
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local", sqlInfo.User, sqlInfo.Password, sqlInfo.Host, sqlInfo.Port, sqlInfo.Db)
 	var err error

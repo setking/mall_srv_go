@@ -11,7 +11,7 @@ func main() {
 	//初始化连接数据库
 	initialize.InitDB()
 	//创建表
-	err := CreateTable(&model.GoodsDetail{}, &model.InventoryHistory{})
+	err := CreateTable(&model.Inventory{})
 	if err != nil {
 		fmt.Println(err)
 	}

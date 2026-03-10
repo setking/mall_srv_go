@@ -2,10 +2,11 @@ package initialize
 
 import (
 	"fmt"
+	"inventory/global"
+
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	goredislib "github.com/redis/go-redis/v9"
-	"inventory/global"
 )
 
 func InitRedis() {
@@ -15,8 +16,9 @@ func InitRedis() {
 	// implements the `redis.Pool` interface.
 
 	client := goredislib.NewClient(&goredislib.Options{
-		Addr: addr,
-		DB:   global.ServerConfig.RedisInfo.Db,
+		Addr:     addr,
+		DB:       global.ServerConfig.RedisInfo.Db,
+		Password: global.ServerConfig.RedisInfo.Password,
 	})
 	pool := goredis.NewPool(client) // or, pool := redigo.NewPool(...)
 

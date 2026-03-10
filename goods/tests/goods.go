@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"goods/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -13,7 +14,7 @@ var conn *grpc.ClientConn
 
 func start() {
 	var err error
-	conn, err = grpc.NewClient("192.168.0.102:50035", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err = grpc.NewClient("192.168.194.133:50035", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		panic(err)
 	}
@@ -111,6 +112,6 @@ func TestGetGoodsDetail() {
 func main() {
 	start()
 	//TestCreateGoods()
-	TestUpdateGoods()
+	TestGoodsList()
 	//TestDeleteGoods()
 }

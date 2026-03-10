@@ -3,13 +3,14 @@ package initialize
 import (
 	"encoding/json"
 	"fmt"
+	"goods/global"
+	"os"
+
 	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
 	"github.com/nacos-group/nacos-sdk-go/vo"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"goods/global"
-	"os"
 )
 
 func GetEnvInfo(env string) bool {

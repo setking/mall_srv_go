@@ -23,9 +23,10 @@ type NacosConfig struct {
 	Group     string `mapstructure:"group"`
 }
 type RedisConfig struct {
-	Host string `mapstructure:"host"`
-	Port uint64 `mapstructure:"port"`
-	Db   int    `mapstructure:"db"`
+	Host     string `mapstructure:"host"`
+	Port     uint64 `mapstructure:"port"`
+	Db       int    `mapstructure:"db"`
+	Password string `mapstructure:"password"`
 }
 type ServerConfig struct {
 	Name       string       `mapstructure:"name" json:"name"`

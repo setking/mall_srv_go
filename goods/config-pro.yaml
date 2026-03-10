@@ -1,6 +1,6 @@
-host: "192.168.0.109"
+host: "192.168.194.136"
 port: 8848
-namespace: "b5e8eac8-b1ad-47db-bda1-e9ce2fc6b3a5"
+namespace: "72c3d40e-f806-45d9-b801-a708c9eead74"
 user: "nacos"
 password: "nacos"
 dataid: "goods"
