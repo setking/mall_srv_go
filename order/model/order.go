@@ -3,8 +3,9 @@ package model
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"gorm.io/plugin/soft_delete"
 	"time"
+
+	"gorm.io/plugin/soft_delete"
 )
 
 type GormList []string
@@ -50,7 +51,7 @@ type Orderinfo struct {
 type Shoppingcart struct {
 	BaseModel
 	User    int32 `gorm:"type:int;not null; comment '用户id';"`
-	Goods   int32 `gorm:"type:int;not null; comment '商品id';"`
+	Goods   int32 `gorm:"type:int;not null;index; comment '商品id';"`
 	Nums    int32 `gorm:"type:int;default:1;not null; comment '购买数量';"`
 	Checked bool  `gorm:"default:false;not null; comment '订单是否选中';"`
 }

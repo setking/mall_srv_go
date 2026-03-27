@@ -2,14 +2,15 @@ package initialize
 
 import (
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
-	"gorm.io/gorm/schema"
 	"log"
 	"os"
 	"time"
 	"user/global"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 func InitDB() {
@@ -27,6 +28,23 @@ func InitDB() {
 	if err != nil {
 		panic(err)
 	}
+
+	// ===== 添加连接池配置 =====
+	sqlDB, err := global.DB.DB()
+	if err != nil {
+		panic(err)
+	}
+
+	// 针对你8核8G + MySQL 300连接的优化配置
+	sqlDB.SetMaxOpenConns(200)                 // 最大打开连接数 (留100给管理工具)
+	sqlDB.SetMaxIdleConns(50)                  // 最大空闲连接数 (应对突发流量)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接最大存活时间
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute) // 空闲连接最大存活时间
+
+	// 可选：验证连接池配置
+	stats := sqlDB.Stats()
+	log.Printf("数据库连接池初始化完成: MaxOpenConns=%d, MaxIdleConns=%d",
+		stats.MaxOpenConnections, sqlDB.Stats().Idle)
 }
 func InitSqlLogger() logger.Interface {
 	newLogger := logger.New(

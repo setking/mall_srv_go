@@ -90,7 +90,7 @@ func main() {
 	//生成注册对象
 	registration := new(api.AgentServiceRegistration)
 	registration.Name = global.ServerConfig.Name
-	serviceID := fmt.Sprintf("%s", uuid.New())
+	serviceID := uuid.New().String()
 	registration.ID = serviceID
 	registration.Port = *Port
 	registration.Tags = global.ServerConfig.Tags
@@ -100,7 +100,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 	go healthCheckServer.Serve(healthLis)
 	go func() {
 		err = server.Serve(lis)
@@ -112,51 +111,44 @@ func main() {
 	//注册监听rocketmq consumer
 	//sig := make(chan os.Signal)
 	mqHost := fmt.Sprintf("%s:%d", global.ServerConfig.MqInfo.Host, global.ServerConfig.MqInfo.Port)
-	c, _ := rocketmq.NewPushConsumer(
+	c, err := rocketmq.NewPushConsumer(
 		consumer.WithGroupName(global.ServerConfig.MqInfo.OrderGroupName),
 		consumer.WithNameServer([]string{mqHost}),
 	)
+	if err != nil {
+		zap.S().Fatalf("RocketMQ Consumer 创建失败: %v", err)
+	}
 	err = c.Subscribe("order_timeout", consumer.MessageSelector{}, handle.OrderTimeout)
 	if err != nil {
 		zap.S().Fatalf("Consumer Subscribe 失败: %v", err)
 	}
-	// Note: start after subscribe
-	err = c.Start()
-	if err != nil {
+	// Note: subscribe 之后再 start
+	if err = c.Start(); err != nil {
 		zap.S().Fatalf("Consumer Start 失败: %v", err)
 	}
-	//<-sig
-	//err = c.Shutdown()
-	//if err != nil {
-	//	fmt.Printf("Consumer关闭失败: %s", err.Error())
-	//}
-	//不能让rocketmq主goroutine退出
-	//接收终止信号
+	// 监听退出信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	zap.S().Info("收到退出信号，开始优雅退出...")
+	// 1. 健康检查标记为不可用，让负载均衡停止转发新请求
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	// 2. Consul 注销，服务发现层摘除节点
 	if err = client.Agent().ServiceDeregister(serviceID); err != nil {
 		zap.S().Errorf("Consul 注销失败: %v", err)
 	} else {
 		zap.S().Info("Consul 注销成功")
 	}
-	healthCheckServer.Stop()
-	// RocketMQ 优雅退出
-	// 停止 Producer，等待正在发送中的消息全部确认
+	// 3. 关闭健康检查 server（Consul 注销后不再需要）
+	healthCheckServer.GracefulStop()
+	zap.S().Info("健康检查服务已停止")
+	// 4. 停止 RocketMQ Consumer，不再消费新消息
 	if err = c.Shutdown(); err != nil {
 		zap.S().Errorf("RocketMQ Producer 关闭失败: %v", err)
 	} else {
 		zap.S().Info("RocketMQ Producer 关闭成功")
 	}
-
-	//// 如果有 Consumer 也要关闭
-	//if err = global.RocketMQConsumer.Shutdown(); err != nil {
-	//	zap.S().Errorf("RocketMQ Consumer 关闭失败: %v", err)
-	//} else {
-	//	zap.S().Info("RocketMQ Consumer 关闭成功")
-	//}
+	// 5. gRPC 优雅停止，等待存量 RPC 处理完毕
 	server.GracefulStop()
 	zap.S().Info("gRPC 服务优雅退出完成")
 }

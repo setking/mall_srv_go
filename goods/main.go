@@ -73,11 +73,17 @@ func main() {
 		panic("filed to listen:" + err.Error())
 	}
 	//注册服务健康检查
+
+	healthCheckServer := grpc.NewServer()
 	healthServer := health.NewServer()
-	grpc_health_v1.RegisterHealthServer(server, healthServer)
+	grpc_health_v1.RegisterHealthServer(healthCheckServer, healthServer)
 	// 设置为健康状态，Consul 才能检查通过
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-
+	// 健康检查独立端口（业务端口+1）
+	healthLis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *IP, *Port+1))
+	if err != nil {
+		panic("failed to listen health port: " + err.Error())
+	}
 	//服务注册
 	cfg := api.DefaultConfig()
 	cfg.Address = fmt.Sprintf("%s:%d", global.ServerConfig.ConsulInfo.Host, global.ServerConfig.ConsulInfo.Port)
@@ -96,7 +102,7 @@ func main() {
 	//生成注册对象
 	registration := new(api.AgentServiceRegistration)
 	registration.Name = global.ServerConfig.Name
-	serviceID := fmt.Sprintf("%s", uuid.New())
+	serviceID := uuid.New().String()
 	registration.ID = serviceID
 	registration.Port = *Port
 	registration.Tags = global.ServerConfig.Tags
@@ -106,7 +112,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	go healthCheckServer.Serve(healthLis)
 	go func() {
 		err = server.Serve(lis)
 		if err != nil {
@@ -114,16 +120,23 @@ func main() {
 		}
 	}()
 
-	//接收终止信号
+	// 监听退出信号
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	zap.S().Info("收到退出信号，开始优雅退出...")
+	// 1. 健康检查标记为不可用，让负载均衡停止转发新请求
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	// 2. Consul 注销，服务发现层摘除节点
 	if err = client.Agent().ServiceDeregister(serviceID); err != nil {
-		zap.S().Info("注销失败")
+		zap.S().Errorf("Consul 注销失败: %v", err)
+	} else {
+		zap.S().Info("Consul 注销成功")
 	}
-	zap.S().Info("注销成功")
+	// 3. 关闭健康检查 server（Consul 注销后不再需要）
+	healthCheckServer.GracefulStop()
+	zap.S().Info("健康检查服务已停止")
+	// 4. gRPC 优雅停止，等待存量 RPC 处理完毕
 	server.GracefulStop()
 	zap.S().Info("gRPC 服务优雅退出完成")
 }
