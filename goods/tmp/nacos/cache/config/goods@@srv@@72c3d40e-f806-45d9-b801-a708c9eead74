@@ -1,0 +1,22 @@
+{
+    "name": "goods_srv",
+    "tags": ["goods_srv", "setking", "python"],
+    "host": "192.168.194.136",
+    "mysql": {
+        "db": "goods",
+        "host": "192.168.194.136",
+        "port": 3306,
+        "user": "root",
+        "password": "k1310234627"
+    },
+    "consul": {
+        "host": "192.168.194.136",
+        "port": 8500
+    },
+    "es": {
+        "host": "192.168.194.136",
+        "port": 9200,
+        "username": "elastic",
+        "password": "7bmGTpgZFJ4A2j4eYUou"
+    }
+}

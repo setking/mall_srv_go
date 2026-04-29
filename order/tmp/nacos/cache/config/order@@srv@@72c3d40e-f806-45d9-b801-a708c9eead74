@@ -1,0 +1,36 @@
+{
+    "name": "order_srv",
+    "tags": ["order_srv", "setking", "python"],
+    "host": "192.168.0.102",
+    "redis":{
+        "host": "192.168.194.133",
+        "port": 6379,
+        "password": "root",
+        "db": 0
+    },
+    "mysql": {
+        "db": "order",
+        "host": "192.168.194.136",
+        "port": 3306,
+        "user": "root",
+        "password": "k1310234627"
+    },
+    "goods_srv": {
+        "name": "goods_srv",
+        "tags": "goods_srv"
+    },
+    "inv_srv": {
+        "name": "inventory_srv",
+        "tags": "inventory_srv"
+    },
+    "consul": {
+        "host": "192.168.194.136",
+        "port": 8500
+    },
+        "mq_config": {
+        "host": "192.168.194.137",
+        "port": 9876,
+        "inv_group_name": "inv",
+        "order_group_name": "order"
+    }
+}

@@ -1,0 +1,27 @@
+{
+    "name": "inventory_srv",
+    "tags": ["inventory_srv", "setking", "go"],
+    "host": "192.168.0.102",
+    "redis":{
+        "host": "192.168.194.133",
+        "port": 6379,
+        "password": "root",
+        "db": 0
+    },
+    "mysql": {
+        "db": "inventory",
+        "host": "192.168.194.136",
+        "port": 3306,
+        "user": "root",
+        "password": "k1310234627"
+    },
+    "consul": {
+        "host": "192.168.194.136",
+        "port": 8500
+    },
+    "mq_config": {
+        "host": "192.168.194.137",
+        "port": 9876,
+        "inv_group_name": "inv"
+    }
+}
